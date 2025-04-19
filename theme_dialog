@@ -1,0 +1,272 @@
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+                               QPushButton, QComboBox, QGroupBox, QRadioButton,
+                               QFontComboBox, QSpinBox, QColorDialog, QCheckBox, QWidget, QTextEdit,
+    QFrame, QButtonGroup, QTabWidget, QGridLayout, QMessageBox)
+from PySide6.QtCore import Qt, Signal, QTime
+from PySide6.QtGui import QFont
+
+
+class ThemeSettingsDialog(QDialog):
+    """
+    Dialog do wyboru ustawień motywu aplikacji.
+    """
+    settings_changed = Signal(str, str, int)  # Sygnał: motyw, czcionka, rozmiar
+
+    def __init__(self, parent=None, current_theme="dark", current_font="", current_font_size=9):
+        super().__init__(parent)
+
+        self.setWindowTitle("Ustawienia motywu")
+        self.setMinimumWidth(400)
+
+        # Wartości początkowe
+        self.current_theme = current_theme
+        self.current_font = current_font
+        self.current_font_size = current_font_size
+        self.parent = parent
+
+        self.setup_ui()
+
+    def setup_ui(self):
+        main_layout = QVBoxLayout(self)
+
+        # Grupa wyboru motywu
+        theme_group = QGroupBox("Motyw")
+        theme_layout = QVBoxLayout()
+
+        # Zostawiamy tylko ciemny i jasny motyw
+        self.dark_theme_radio = QRadioButton("Ciemny")
+        self.light_theme_radio = QRadioButton("Jasny")
+
+        # Ustawienie bieżącego motywu
+        if self.current_theme == "dark":
+            self.dark_theme_radio.setChecked(True)
+        elif self.current_theme == "light":
+            self.light_theme_radio.setChecked(True)
+        else:
+            self.dark_theme_radio.setChecked(True)  # Domyślnie ciemny
+
+        theme_layout.addWidget(self.dark_theme_radio)
+        theme_layout.addWidget(self.light_theme_radio)
+        theme_group.setLayout(theme_layout)
+
+        # Grupa ustawień czcionki
+        font_group = QGroupBox("Czcionka")
+        font_layout = QVBoxLayout()
+
+        # Wybór rodzaju czcionki
+        font_type_layout = QHBoxLayout()
+        font_type_label = QLabel("Typ czcionki:")
+        self.font_combo = QFontComboBox()
+        if self.current_font:
+            self.font_combo.setCurrentFont(QFont(self.current_font))
+        font_type_layout.addWidget(font_type_label)
+        font_type_layout.addWidget(self.font_combo)
+
+        # Wybór rozmiaru czcionki
+        font_size_layout = QHBoxLayout()
+        font_size_label = QLabel("Rozmiar czcionki:")
+        self.font_size_spin = QSpinBox()
+        self.font_size_spin.setRange(6, 24)
+        self.font_size_spin.setValue(self.current_font_size)
+        font_size_layout.addWidget(font_size_label)
+        font_size_layout.addWidget(self.font_size_spin)
+
+        font_layout.addLayout(font_type_layout)
+        font_layout.addLayout(font_size_layout)
+        font_group.setLayout(font_layout)
+
+        # Opcja zapisania ustawień
+        self.save_settings_checkbox = QCheckBox("Zapamiętaj ustawienia")
+        self.save_settings_checkbox.setChecked(True)
+
+        # Przyciski OK i Anuluj
+        buttons_layout = QHBoxLayout()
+        self.ok_button = QPushButton("OK")
+        self.cancel_button = QPushButton("Anuluj")
+
+        self.ok_button.clicked.connect(self.accept)
+        self.cancel_button.clicked.connect(self.reject)
+
+        buttons_layout.addStretch()
+        buttons_layout.addWidget(self.ok_button)
+        buttons_layout.addWidget(self.cancel_button)
+
+        # Dodanie wszystkich elementów do głównego layoutu
+        main_layout.addWidget(theme_group)
+        main_layout.addWidget(font_group)
+        main_layout.addWidget(self.save_settings_checkbox)
+        main_layout.addLayout(buttons_layout)
+
+        # Podłączenie sygnałów do natychmiastowej zmiany - ale dopiero po utworzeniu komponentów
+        self.dark_theme_radio.toggled.connect(lambda checked: self.apply_immediate_changes() if checked else None)
+        self.light_theme_radio.toggled.connect(lambda checked: self.apply_immediate_changes() if checked else None)
+        self.font_combo.currentFontChanged.connect(self.apply_immediate_changes)
+        self.font_size_spin.valueChanged.connect(self.apply_immediate_changes)
+
+    def apply_immediate_changes(self):
+        """Aplikuje zmiany natychmiastowo podczas wybierania opcji"""
+        # Upewnij się, że komponenty zostały już utworzone
+        if not hasattr(self, 'font_combo') or not hasattr(self, 'font_size_spin'):
+            return
+
+        # Ustal bieżący motyw
+        theme = self.get_current_theme()
+
+        # Pobierz wybraną czcionkę i rozmiar
+        font = self.font_combo.currentFont().family()
+        font_size = self.font_size_spin.value()
+
+        # Emituj sygnał z ustawieniami
+        self.settings_changed.emit(theme, font, font_size)
+
+    def get_current_theme(self):
+        """Zwraca nazwę aktualnie wybranego motywu"""
+        if self.dark_theme_radio.isChecked():
+            return "dark"
+        elif self.light_theme_radio.isChecked():
+            return "light"
+        else:
+            return "dark"
+
+class InsertSymbolDialog(QDialog):
+    """
+    Dialog do wyboru symbolu urlopu lub nieobecności z zakładkami.
+    """
+    symbol_selected = Signal(str)  # Sygnał z wybranym symbolem
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Wstaw symbol")
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(500)
+
+        self.selected_symbol = ""
+        self.setup_ui()
+
+    def setup_ui(self):
+        main_layout = QVBoxLayout(self)
+
+        # Zakładki
+        tabs = QTabWidget()
+
+        # Definicje symboli w kategoriach
+        popularne_symbole = [
+            ("UZ", "Urlop na żądanie"),
+            ("CO", "Zwolnienie lekarskie"),
+            ("CR", "Zwolnienie lekarskie na inną osobę we wspólnym gospodarstwie")
+         ]
+        urlopy_symbole = [
+            ("U", "Urlop wypoczynkowy"),
+            ("UB", "Urlop bezpłatny"),
+            ("UD", "Urlop dodatkowy z tytułu niepełnosprawności"),
+            ("UM", "Urlop macierzyński (20 tyg., Dodatkowy 6 tyg., Rodzicielski 26 tyg.)"),
+            ("UO", "Urlop okolicznościowy"),
+            ("UOD", "Opieka nad dzieckiem do lat 14"),
+            ("US", "Urlop szkolny"),
+            ("UT", "Urlop ojcowski"),
+            ("UW", "Urlop wychowawczy"),
+            ("UZ", "Urlop na żądanie"),
+            ("UOP", "5 dni opieki na dziecko lub członka rodziny - urlop opiekuńczy")
+        ]
+        zwolnienia_symbole = [
+            ("CO", "Zwolnienie lekarskie"),
+            ("CR", "Zwolnienie lekarskie na inną osobę we wspólnym gospodarstwie"),
+            ("CRW", "Zwolnienie lekarskie na opiekę (sytuacja wyjątkowa)"),
+            ("CSR", "Świadczenie rehabilitacyjne"),
+            ("ZO", "Zwolnienie z obowiązku świadczenia pracy"),
+            ("ZS", "Zwolnienie z obowiązku świadczenia pracy (sytuacja wyjątkowa)")
+        ]
+        delegacje_symbole = [
+            ("DK", "Podróż służbowa krajowa"),
+            ("DZ", "Podróż służbowa zagraniczna"),
+            ("HO", "Home Office"),
+            ("P", "Czasowe oddelegowanie"),
+            ("PD", "Prace dodatkowe")
+        ]
+        inne_symbole = [
+            ("BC", "Doradca w backup"),
+            ("BK", "Badanie kontrolne"),
+            ("BO", "Badanie okresowe"),
+            ("CW", "Ćwiczenia wojskowe"),
+            ("DYS", "Realizacja dyspozycji"),
+            ("MW", "mWolne"),
+            ("NN", "Nieobecność nieusprawiedliwiona"),
+            ("NU", "Nieobecność usprawiedliwiona"),
+            ("NW", "Nieobecność do wyjaśnienia"),
+            ("O", "Nieobecność usprawiedliwiona z tytułu odbioru godzin"),
+            ("OS", "Odbiór dnia wolnego za święto przypadające w sobotę"),
+            ("S", "Szkolenie po programie adaptacyjnym"),
+            ("T", "Testy"),
+            ("USW", "2 dni wolne na zwolnienie od pracy z powodu siły wyższej"),
+            ("Z", "Rozwiązanie umowy")
+        ]
+
+        # Funkcja do tworzenia zakładki
+        def create_tab(symbols, tab_name):
+            tab_widget = QWidget()
+            tab_layout = QVBoxLayout(tab_widget)
+
+            # Siatka przycisków
+            buttons_group = QGroupBox(f"Kody {tab_name.lower()}")
+            buttons_layout = QGridLayout()
+            for idx, (symbol, _) in enumerate(symbols):
+                button = QPushButton(symbol)
+                button.setFixedSize(50, 30)  # Stały rozmiar przycisku
+                button.clicked.connect(lambda checked, s=symbol: self.on_symbol_selected(s))
+                row = idx // 5  # 5 przycisków w rzędzie
+                col = idx % 5
+                buttons_layout.addWidget(button, row, col)
+            buttons_group.setLayout(buttons_layout)
+
+            # Legenda
+            legenda_group = QGroupBox("Legenda")
+            legenda_layout = QVBoxLayout()
+            legenda_text = QTextEdit()
+            legenda_text.setReadOnly(True)
+            legenda_text.setText("\n".join([f"{symbol}: {desc}" for symbol, desc in symbols]))
+            legenda_layout.addWidget(legenda_text)
+            legenda_group.setLayout(legenda_layout)
+
+            tab_layout.addWidget(buttons_group)
+            tab_layout.addWidget(legenda_group)
+            return tab_widget
+
+        # Dodanie zakładek
+        tabs.addTab(create_tab(popularne_symbole, "Popularne symbole"), "Popularne symbole")
+        tabs.addTab(create_tab(urlopy_symbole, "Urlopy"), "Urlopy")
+        tabs.addTab(create_tab(zwolnienia_symbole, "Zwolnienia"), "Zwolnienia")
+        tabs.addTab(create_tab(delegacje_symbole, "Delegacje i praca zdalna"), "Delegacje i praca zdalna")
+        tabs.addTab(create_tab(inne_symbole, "Inne"), "Inne")
+
+        # Etykieta pokazująca wybrany symbol
+        self.selected_symbol_label = QLabel("Wybrany symbol: brak")
+        self.selected_symbol_label.setStyleSheet("padding: 5px;")
+
+        # Przyciski OK i Anuluj
+        buttons_layout = QHBoxLayout()
+        self.ok_button = QPushButton("OK")
+        self.cancel_button = QPushButton("Anuluj")
+
+        self.ok_button.clicked.connect(self.accept)
+        self.cancel_button.clicked.connect(self.reject)
+        self.ok_button.setEnabled(False)  # Nieaktywny, dopóki nie wybrano symbolu
+
+        buttons_layout.addStretch()
+        buttons_layout.addWidget(self.ok_button)
+        buttons_layout.addWidget(self.cancel_button)
+
+        # Dodanie elementów do głównego layoutu
+        main_layout.addWidget(tabs)
+        main_layout.addWidget(self.selected_symbol_label)
+        main_layout.addLayout(buttons_layout)
+
+    def on_symbol_selected(self, symbol):
+        """Obsługuje wybór symbolu"""
+        self.selected_symbol = symbol
+        self.selected_symbol_label.setText(f"Wybrany symbol: {symbol}")
+        self.ok_button.setEnabled(True)
+
+    def get_selected_symbol(self):
+        """Zwraca wybrany symbol"""
+        return self.selected_symbol
+
