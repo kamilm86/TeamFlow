@@ -1,0 +1,159 @@
+import sqlite3
+import pyodbc
+from config import DATABASE_CONFIG, ENVIRONMENT
+from datetime import datetime, timedelta
+import getpass
+
+class DatabaseConnector:
+    """
+    Klasa odpowiedzialna za połączenie z bazą danych
+    """
+
+    @staticmethod
+    def get_connection():
+        """
+        Zwraca połączenie do bazy danych na podstawie konfiguracji
+        """
+        db_config = DATABASE_CONFIG[ENVIRONMENT]
+
+        if db_config['ENGINE'] == 'QSQLITE':
+            conn = sqlite3.connect(db_config['NAME'])
+            return conn
+
+        elif db_config['ENGINE'] == 'mssql':
+            # Połączenie do MS SQL Server
+            connection_string = (
+                f"DRIVER={{{db_config['DRIVER']}}};"
+                f"SERVER={db_config['SERVER']};"
+                f"DATABASE={db_config['DATABASE']};"
+            )
+
+            # Dodaj uwierzytelnianie
+            if 'TRUSTED_CONNECTION' in db_config and db_config['TRUSTED_CONNECTION'] == 'yes':
+                connection_string += "Trusted_Connection=yes;"
+            else:
+                connection_string += f"UID={db_config['USER']};PWD={db_config['PASSWORD']};"
+
+            conn = pyodbc.connect(connection_string)
+            return conn
+
+        else:
+            raise ValueError(f"Nieobsługiwany silnik bazy danych: {db_config['ENGINE']}")
+
+    @staticmethod
+    def execute_query(query, params=None, fetch_all=True):
+        """
+        Wykonuje zapytanie SQL i zwraca wyniki
+
+        Args:
+            query (str): Zapytanie SQL
+            params (tuple): Parametry zapytania
+            fetch_all (bool): Czy pobrać wszystkie wyniki (True) czy tylko jeden (False)
+
+        Returns:
+            list/tuple: Wyniki zapytania
+        """
+        conn = DatabaseConnector.get_connection()
+        cursor = conn.cursor()
+
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+
+        if fetch_all:
+            result = cursor.fetchall()
+        else:
+            result = cursor.fetchone()
+
+        conn.commit()
+        conn.close()
+
+        return result
+
+    @staticmethod
+    def get_work_schedule_data(year, month):
+        """
+        Pobiera dane grafiku pracy dla danego roku i miesiąca
+
+        Args:
+            year (int): Rok
+            month (int): Miesiąc
+
+        Returns:
+            list: Lista danych grafiku pracy
+        """
+        query = """
+        SELECT 
+            k.WydzialGrafik as Wydzial, 
+            k.PrzelozonyDane as Przelozony, 
+            k.UzytkownikDane,
+            k.Uzytkownik,
+            g.Data,
+            g.Symbol
+        FROM p_v_zz_GrafikiPracy g 
+            LEFT JOIN p_v_do_KonfiguracjaZatrudnienie k 
+        ON 
+            k.Uzytkownik = g.Uzytkownik
+            AND k.Rok = g.Rok
+            AND k.Miesiac = g.Miesiac
+        WHERE 
+            k.Rok = ? AND k.Miesiac = ?
+        ORDER BY 
+            k.WydzialGrafik, k.PrzelozonyDane, k.UzytkownikDane
+        """
+
+        return DatabaseConnector.execute_query(query, (year, month))
+
+    @staticmethod
+    def get_employee_details(employee_id):
+        """
+        Pobiera szczegółowe informacje o pracowniku
+
+        Args:
+            employee_id (str): ID pracownika
+
+        Returns:
+            tuple: Dane pracownika
+        """
+        query = """
+        SELECT *
+        FROM p_v_do_KonfiguracjaZatrudnienie
+        WHERE Uzytkownik = ?
+        """
+
+        return DatabaseConnector.execute_query(query, (employee_id,), fetch_all=False)
+
+    @staticmethod
+    def get_employee_schedule(employee_id, year, month):
+        """
+        Pobiera grafik pracownika dla danego miesiąca
+
+        Args:
+            employee_id (str): ID pracownika
+            year (int): Rok
+            month (int): Miesiąc
+
+        Returns:
+            list: Lista wpisów grafiku pracownika
+        """
+        query = """
+        SELECT *
+        FROM p_v_zz_GrafikiPracy
+        WHERE Uzytkownik = ? AND Rok = ? AND Miesiac = ?
+        ORDER BY Data
+        """
+
+        return DatabaseConnector.execute_query(query, (employee_id, year, month))
+
+
+# Funkcja zwracająca ID użytkownika dla Modyfikujacy (dla testów "System")
+def get_modifier_id():
+    username = getpass.getuser()
+    query = "SELECT Id FROM Konta WHERE NumerKadrowy = ?"
+    result = DatabaseConnector.execute_query(query, (username,), fetch_all=False)
+    if result:
+        return result[0]
+    return "System"  # Dla testów, zmień na ID użytkownika w produkcji
+
+
