@@ -269,4 +269,3 @@ class InsertSymbolDialog(QDialog):
     def get_selected_symbol(self):
         """Zwraca wybrany symbol"""
         return self.selected_symbol
-
