@@ -156,4 +156,3 @@ def get_modifier_id():
         return result[0]
     return "System"  # Dla testów, zmień na ID użytkownika w produkcji
 
-
