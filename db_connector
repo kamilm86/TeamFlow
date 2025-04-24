@@ -71,88 +71,38 @@ class DatabaseConnector:
 
         return result
 
-    @staticmethod
-    def get_work_schedule_data(year, month):
-        """
-        Pobiera dane grafiku pracy dla danego roku i miesiąca
 
-        Args:
-            year (int): Rok
-            month (int): Miesiąc
-
-        Returns:
-            list: Lista danych grafiku pracy
-        """
-        query = """
-        SELECT 
-            k.WydzialGrafik as Wydzial, 
-            k.PrzelozonyDane as Przelozony, 
-            k.UzytkownikDane,
-            k.Uzytkownik,
-            g.Data,
-            g.Symbol
-        FROM p_v_zz_GrafikiPracy g 
-            LEFT JOIN p_v_do_KonfiguracjaZatrudnienie k 
-        ON 
-            k.Uzytkownik = g.Uzytkownik
-            AND k.Rok = g.Rok
-            AND k.Miesiac = g.Miesiac
-        WHERE 
-            k.Rok = ? AND k.Miesiac = ?
-        ORDER BY 
-            k.WydzialGrafik, k.PrzelozonyDane, k.UzytkownikDane
-        """
-
-        return DatabaseConnector.execute_query(query, (year, month))
-
-    @staticmethod
-    def get_employee_details(employee_id):
-        """
-        Pobiera szczegółowe informacje o pracowniku
-
-        Args:
-            employee_id (str): ID pracownika
-
-        Returns:
-            tuple: Dane pracownika
-        """
-        query = """
-        SELECT *
-        FROM p_v_do_KonfiguracjaZatrudnienie
-        WHERE Uzytkownik = ?
-        """
-
-        return DatabaseConnector.execute_query(query, (employee_id,), fetch_all=False)
-
-    @staticmethod
-    def get_employee_schedule(employee_id, year, month):
-        """
-        Pobiera grafik pracownika dla danego miesiąca
-
-        Args:
-            employee_id (str): ID pracownika
-            year (int): Rok
-            month (int): Miesiąc
-
-        Returns:
-            list: Lista wpisów grafiku pracownika
-        """
-        query = """
-        SELECT *
-        FROM p_v_zz_GrafikiPracy
-        WHERE Uzytkownik = ? AND Rok = ? AND Miesiac = ?
-        ORDER BY Data
-        """
-
-        return DatabaseConnector.execute_query(query, (employee_id, year, month))
-
-
-# Funkcja zwracająca ID użytkownika dla Modyfikujacy (dla testów "System")
+# Funkcja zwracająca informacje o użytkowniku (ID, NumerKadrowy, RolaNazwa)
 def get_modifier_id():
+    """
+    Pobiera ID, numer kadrowy i rolę użytkownika zalogowanego do systemu.
+
+    Returns:
+        tuple: (user_id, user_app_id, user_app_role) - ID użytkownika, numer kadrowy, nazwa roli
+    """
     username = getpass.getuser()
-    query = "SELECT Id FROM Konta WHERE NumerKadrowy = ?"
-    result = DatabaseConnector.execute_query(query, (username,), fetch_all=False)
-    if result:
-        return result[0]
-    return "System"  # Dla testów, zmień na ID użytkownika w produkcji
+    try:
+        conn = DatabaseConnector.get_connection()
+        cursor = conn.cursor()
+
+        # Pobierz informacje o użytkowniku na podstawie jego nazwy
+        query = "SELECT Id, NumerKadrowy, RolaNazwa FROM [dbo].[p_T_DO_KontaUzytkownikow] WHERE NumerKadrowy = '000001' or Imie = ? "
+        cursor.execute(query, (username,))
+        result = cursor.fetchone()
+        conn.close()
+
+        if result:
+            user_id = result[0]
+            user_app_id = result[1]  # NumerKadrowy
+            user_app_role = result[2]  # RolaNazwa
+            return user_id, user_app_id, user_app_role
+
+        # Wartości domyślne gdy nie znaleziono użytkownika
+        return "System", username, "Użytkownik"
+
+    except Exception as e:
+        print(f"Błąd podczas pobierania informacji o użytkowniku: {e}")
+        # Wartości domyślne w przypadku błędu
+        return "System", username, "Użytkownik"
+
 
